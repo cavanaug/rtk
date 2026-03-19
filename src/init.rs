@@ -1178,13 +1178,21 @@ fn resolve_claude_dir() -> Result<PathBuf> {
         .context("Cannot determine home directory. Is $HOME set?")
 }
 
-/// Resolve OpenCode config directory (~/.config/opencode)
-/// OpenCode uses ~/.config/opencode on all platforms (XDG convention),
-/// NOT the macOS-native ~/Library/Application Support/.
+/// Resolve OpenCode config directory.
+/// Honors OPENCODE_CONFIG_DIR when set; otherwise falls back to ~/.config/opencode.
 fn resolve_opencode_dir() -> Result<PathBuf> {
+    if let Ok(config_dir) = std::env::var("OPENCODE_CONFIG_DIR") {
+        let trimmed = config_dir.trim();
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
     dirs::home_dir()
         .map(|h| h.join(".config").join("opencode"))
-        .context("Cannot determine home directory. Is $HOME set?")
+        .context(
+            "Cannot determine OpenCode config directory. Is $HOME set or OPENCODE_CONFIG_DIR defined?",
+        )
 }
 
 /// Return OpenCode plugin path: ~/.config/opencode/plugins/rtk.ts
@@ -1405,7 +1413,46 @@ fn run_opencode_only_mode(verbose: u8) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    static OPENCODE_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<String>,
+    }
+
+    fn set_env_var(key: &str, value: &str) {
+        // SAFETY: Tests mutate process env under OPENCODE_ENV_LOCK to avoid concurrent access.
+        unsafe { std::env::set_var(key, value) }
+    }
+
+    fn remove_env_var(key: &str) {
+        // SAFETY: Tests mutate process env under OPENCODE_ENV_LOCK to avoid concurrent access.
+        unsafe { std::env::remove_var(key) }
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: Option<&str>) -> Self {
+            let original = std::env::var(key).ok();
+            match value {
+                Some(v) => set_env_var(key, v),
+                None => remove_env_var(key),
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.original {
+                Some(value) => set_env_var(self.key, value),
+                None => remove_env_var(self.key),
+            }
+        }
+    }
 
     #[test]
     fn test_init_mentions_all_top_level_commands() {
@@ -1504,6 +1551,49 @@ More content"#;
         assert!(plugin_path.exists());
         fs::remove_file(&plugin_path).unwrap();
         assert!(!plugin_path.exists());
+    }
+
+    #[test]
+    fn test_resolve_opencode_dir_uses_env_override() {
+        let _lock = OPENCODE_ENV_LOCK
+            .lock()
+            .expect("env lock must not be poisoned");
+        let _guard = EnvVarGuard::set("OPENCODE_CONFIG_DIR", Some("/tmp/rtk-opencode-config"));
+
+        let resolved = resolve_opencode_dir().unwrap();
+
+        assert_eq!(resolved, PathBuf::from("/tmp/rtk-opencode-config"));
+    }
+
+    #[test]
+    fn test_resolve_opencode_dir_falls_back_when_env_is_blank() {
+        let _lock = OPENCODE_ENV_LOCK
+            .lock()
+            .expect("env lock must not be poisoned");
+        let _guard = EnvVarGuard::set("OPENCODE_CONFIG_DIR", Some("   \t  "));
+
+        let home = dirs::home_dir().expect("home directory should be available in test");
+        let resolved = resolve_opencode_dir().unwrap();
+
+        assert_eq!(resolved, home.join(".config").join("opencode"));
+    }
+
+    #[test]
+    fn test_prepare_opencode_plugin_path_uses_env_override() {
+        let _lock = OPENCODE_ENV_LOCK
+            .lock()
+            .expect("env lock must not be poisoned");
+        let temp = TempDir::new().unwrap();
+        let custom_dir = temp.path().join("opencode-custom");
+        let _guard = EnvVarGuard::set(
+            "OPENCODE_CONFIG_DIR",
+            Some(custom_dir.to_string_lossy().as_ref()),
+        );
+
+        let plugin_path = prepare_opencode_plugin_path().unwrap();
+
+        assert_eq!(plugin_path, custom_dir.join("plugins").join("rtk.ts"));
+        assert!(plugin_path.parent().unwrap().exists());
     }
 
     #[test]

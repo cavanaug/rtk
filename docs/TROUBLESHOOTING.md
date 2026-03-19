@@ -187,7 +187,7 @@ rtk init -g --opencode
 
 **3. Verify plugin file exists:**
 ```bash
-ls -la ~/.config/opencode/plugins/rtk.ts
+ls -la "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/rtk.ts"
 ```
 
 **4. Restart OpenCode**

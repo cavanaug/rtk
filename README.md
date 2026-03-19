@@ -299,14 +299,15 @@ rtk init -g --opencode
 ```
 
 **What it creates:**
-- `~/.config/opencode/plugins/rtk.ts`
+- `$OPENCODE_CONFIG_DIR/plugins/rtk.ts` when `OPENCODE_CONFIG_DIR` is set
+- `~/.config/opencode/plugins/rtk.ts` otherwise
 
 **Restart Required**: Restart OpenCode, then test with `git status` in a session.
 
 **Manual install (fallback):**
 ```bash
-mkdir -p ~/.config/opencode/plugins
-cp hooks/opencode-rtk.ts ~/.config/opencode/plugins/rtk.ts
+mkdir -p "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins"
+cp hooks/opencode-rtk.ts "${OPENCODE_CONFIG_DIR:-$HOME/.config/opencode}/plugins/rtk.ts"
 ```
 
 ### Commands Rewritten
