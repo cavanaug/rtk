@@ -320,8 +320,8 @@ rtk init -g --opencode
 ```
 
 **What it creates:**
-- `$OPENCODE_CONFIG_DIR/plugins/rtk.ts` when `OPENCODE_CONFIG_DIR` is set
-- `~/.config/opencode/plugins/rtk.ts` otherwise
+- `$OPENCODE_CONFIG_DIR/plugins/rtk.ts` when `OPENCODE_CONFIG_DIR` is set and non-empty (per `${OPENCODE_CONFIG_DIR:-...}` semantics)
+- `~/.config/opencode/plugins/rtk.ts` when `OPENCODE_CONFIG_DIR` is unset or empty
 
 **Restart Required**: Restart OpenCode, then test with `git status` in a session.
 
